@@ -236,13 +236,16 @@ function Tamio({ tamio, addTamio }) {
   }
 
   var today = new Date().toLocaleDateString("el-GR");
+  // Σήμερα: όλες οι κινήσεις (μετρητά + τράπεζα)
+  var allTodayEntries = tamio.filter(function(e){ return e.date===today && e.type!=="Προμήθεια"; });
+  var todayEsoda = allTodayEntries.filter(function(e){ return e.type==="Είσπραξη"; });
+  var todayExoda = allTodayEntries.filter(function(e){ return e.type==="Έξοδο"; });
+
+  // Ιστορικό: φιλτράρεται ανά tab
   var allEntries = (viewTab==="cash" ? tamio.filter(function(e){ return e.register==="cash"; }) : tamio.filter(function(e){ return e.register==="bank"; }))
-    .filter(function(e){ return e.type !== "Προμήθεια"; });
-  var todayEntries = allEntries.filter(function(e){ return e.date===today; });
-  var olderEntries = allEntries.filter(function(e){ return e.date!==today; });
-  // Group older by date
+    .filter(function(e){ return e.type !== "Προμήθεια" && e.date!==today; });
   var byDate = {};
-  olderEntries.forEach(function(e){ if(!byDate[e.date]) byDate[e.date]=[]; byDate[e.date].push(e); });
+  allEntries.forEach(function(e){ if(!byDate[e.date]) byDate[e.date]=[]; byDate[e.date].push(e); });
   var dateGroups = Object.keys(byDate).sort(function(a,b){
     var pa=a.split("/"), pb=b.split("/");
     return new Date(pb[2],pb[1]-1,pb[0]) - new Date(pa[2],pa[1]-1,pa[0]);
@@ -344,37 +347,43 @@ function Tamio({ tamio, addTamio }) {
       {allEntries.length===0 && <div style={{...s.card,textAlign:"center",color:th.muted,padding:30}}>Δεν υπάρχουν εγγραφές</div>}
 
       {/* Σήμερα */}
-      {todayEntries.length>0 && <div style={{...s.sectionTitle, color:th.green}}>📅 ΣΗΜΕΡΑ — {today}</div>}
-      {todayEntries.map((e,i)=>(
-        <div key={e.id||i}>
-          <div style={{...s.card,borderLeft:"3px solid "+(e.type==="Είσπραξη"?th.green:e.type==="Προμήθεια"?th.accent:th.red)}}>
-            <div style={s.row}>
-              <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:700}}>{e.desc} {e.type==="Προμήθεια"&&<span style={s.pill(th.accent)}>Προμήθεια</span>}</div>
-                <div style={{fontSize:11,color:th.muted,marginTop:2}}>
-                  {e.payMethod==="Κάρτα"?"💳":e.payMethod==="Κατάθεση"?"🏦":e.payMethod==="Επί Πίστωση"?"📋":"💵"} {e.payMethod}
-                  {e.name?" · 👤 "+e.name:""} · {e.date} {e.time}
-                  <span style={{color:e.register==="cash"?th.green:th.blue,marginLeft:6}}>{e.register==="cash"?"💵":"🏦"}</span>
-                </div>
+      {allTodayEntries.length===0 && <div style={{...s.card,textAlign:"center",color:th.muted,padding:20}}>Δεν υπάρχουν κινήσεις σήμερα</div>}
+      {allTodayEntries.length>0 && <>
+        <div style={{...s.sectionTitle, color:th.green}}>📅 ΣΗΜΕΡΑ — {today}</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+          {/* Αριστερά: Εισπράξεις */}
+          <div>
+            <div style={{fontSize:10,color:th.green,fontWeight:700,letterSpacing:1,marginBottom:6}}>ΕΙΣΠΡΑΞΕΙΣ</div>
+            {todayEsoda.length===0 && <div style={{...s.card,textAlign:"center",color:th.muted,padding:12,fontSize:12}}>—</div>}
+            {todayEsoda.map(function(e,i){ return (
+              <div key={e.id||i} style={{...s.card,borderLeft:"3px solid "+th.green,marginBottom:6}}>
+                <div style={{fontSize:12,fontWeight:700}}>{e.desc}</div>
+                <div style={{fontSize:10,color:th.muted}}>{e.payMethod==="Κάρτα"?"💳":e.payMethod==="Κατάθεση"?"🏦":e.payMethod==="Επί Πίστωση"?"📋":"💵"} {e.payMethod} · {e.time}</div>
+                <div style={{fontSize:15,fontWeight:900,color:th.green,marginTop:4}}>+{e.amount.toFixed(2)}€</div>
               </div>
-              <div style={{fontSize:16,fontWeight:900,color:e.type==="Είσπραξη"?th.green:th.red,marginLeft:8}}>
-                {e.type==="Είσπραξη"?"+":"-"}{e.amount.toFixed(2)}€
-              </div>
-            </div>
+            ); })}
+            {todayEsoda.length>0 && <div style={{textAlign:"right",fontSize:12,fontWeight:800,color:th.green,marginTop:4}}>
+              Σύνολο: +{todayEsoda.reduce(function(s,e){return s+e.amount;},0).toFixed(2)}€
+            </div>}
           </div>
-          {/* Προμήθεια κάρτας — εμφανίζεται κάτω από τη συναλλαγή */}
-          {e.type==="Είσπραξη" && e.payMethod==="Κάρτα" && (
-            <div style={{...s.card, marginTop:-8, marginLeft:16, borderLeft:"3px solid "+th.accent, background:"#0a0a10", padding:"8px 14px"}}>
-              <div style={s.row}>
-                <div style={{fontSize:11,color:th.accent}}>
-                  └ Προμήθεια κάρτας 1.3% <span style={{color:th.muted,fontSize:10}}>(από {e.amount.toFixed(2)}€)</span>
-                </div>
-                <div style={{fontSize:12,fontWeight:800,color:th.red}}>-{(e.amount*CARD_FEE).toFixed(2)}€</div>
+          {/* Δεξιά: Έξοδα */}
+          <div>
+            <div style={{fontSize:10,color:th.red,fontWeight:700,letterSpacing:1,marginBottom:6}}>ΕΞΟΔΑ</div>
+            {todayExoda.length===0 && <div style={{...s.card,textAlign:"center",color:th.muted,padding:12,fontSize:12}}>—</div>}
+            {todayExoda.map(function(e,i){ return (
+              <div key={e.id||i} style={{...s.card,borderLeft:"3px solid "+th.red,marginBottom:6}}>
+                <div style={{fontSize:12,fontWeight:700}}>{e.desc}</div>
+                <div style={{fontSize:10,color:th.muted}}>{e.payMethod==="Κάρτα"?"💳":e.payMethod==="Κατάθεση"?"🏦":"💵"} {e.payMethod} · {e.time}</div>
+                <div style={{fontSize:15,fontWeight:900,color:th.red,marginTop:4}}>-{e.amount.toFixed(2)}€</div>
               </div>
-            </div>
-          )}
+            ); })}
+            {todayExoda.length>0 && <div style={{textAlign:"right",fontSize:12,fontWeight:800,color:th.red,marginTop:4}}>
+              Σύνολο: -{todayExoda.reduce(function(s,e){return s+e.amount;},0).toFixed(2)}€
+            </div>}
+          </div>
         </div>
-      ))}
+      </>}
+      
 
       {/* Παλιότερες */}
       {dateGroups.length>0 && <div style={{...s.sectionTitle, marginTop:16}}>ΙΣΤΟΡΙΚΟ</div>}
@@ -592,6 +601,7 @@ function Ekthesi({ tamio }) {
   const [selMonths, setSelMonths] = useState([now2.getMonth()]); // array of selected months
   const [allYear, setAllYear] = useState(false);
   const [openCat, setOpenCat] = useState(null);
+  const [catFilter, setCatFilter] = useState("");
 
   function toggleMonth(i) {
     if (allYear) { setAllYear(false); setSelMonths([i]); setOpenCat(null); return; }
@@ -638,17 +648,28 @@ function Ekthesi({ tamio }) {
 
   function CatRow({ cat, amount, color, entryType }) {
     var isOpen = openCat && openCat.type===entryType && openCat.cat===cat;
-    var entries = monthTamio.filter(function(e){
+    var filter = (isOpen && openCat.cat===cat) ? catFilter : "";
+    function setFilter(v) { setCatFilter(v); }
+    var allEntries = monthTamio.filter(function(e){
       if (entryType==="Είσπραξη") {
         var k = (e.cat && e.cat!=="Είσπραξη") ? e.cat : "Άλλο";
         return e.type==="Είσπραξη" && k===cat;
       }
       return e.type==="Έξοδο" && e.cat===cat;
     });
+    var entries = filter.trim()==="" ? allEntries : allEntries.filter(function(e){
+      var q = filter.toLowerCase();
+      return (e.desc&&e.desc.toLowerCase().includes(q)) ||
+             (e.name&&e.name.toLowerCase().includes(q)) ||
+             (e.payMethod&&e.payMethod.toLowerCase().includes(q)) ||
+             (e.date&&e.date.includes(q)) ||
+             String(e.amount).includes(q);
+    });
+    var filteredTotal = entries.reduce(function(s,e){return s+e.amount;},0);
     return (
       <>
         <div style={{...s.row, marginBottom:6, cursor:"pointer", padding:"6px 8px", borderRadius:8, background:isOpen?"#1e1e2a":"transparent"}}
-          onClick={()=>setOpenCat(isOpen ? null : {type:entryType, cat})}>
+          onClick={()=>{ setCatFilter(""); setOpenCat(isOpen ? null : {type:entryType, cat}); }}>
           <span style={{fontSize:13, fontWeight:600}}>{cat}</span>
           <div style={{display:"flex", alignItems:"center", gap:8}}>
             <span style={{fontSize:14,fontWeight:800,color}}>{entryType==="Είσπραξη"?"+":"-"}{amount.toFixed(2)}€</span>
@@ -657,19 +678,28 @@ function Ekthesi({ tamio }) {
         </div>
         {isOpen && (
           <div style={{background:"#050508", borderRadius:8, marginBottom:8, overflow:"hidden"}}>
+            <div style={{padding:"8px 12px", borderBottom:"1px solid "+th.border}}>
+              <input
+                style={{...s.input, marginBottom:0, fontSize:12, padding:"6px 10px"}}
+                placeholder={"🔍 Φίλτρο (όνομα, ημερ., ποσό...)"}
+                value={filter}
+                onChange={function(ev){ ev.stopPropagation(); setFilter(ev.target.value); }}
+                onClick={function(ev){ ev.stopPropagation(); }}
+              />
+            </div>
             {entries.length===0 && <div style={{padding:"10px 12px",color:th.muted,fontSize:12}}>Δεν βρέθηκαν εγγραφές</div>}
             {entries.map(function(e,i){ return (
               <div key={i} style={{padding:"8px 12px", borderBottom:"1px solid "+th.border, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
                 <div>
-                  <div style={{fontSize:12, fontWeight:600}}>{e.desc||e.cat}</div>
+                  <div style={{fontSize:12, fontWeight:600}}>{e.desc||e.cat}{e.name?" — "+e.name:""}</div>
                   <div style={{fontSize:10, color:th.muted}}>{e.date} {e.time} · {e.payMethod==="Κάρτα"?"💳":e.payMethod==="Κατάθεση"?"🏦":e.payMethod==="Επί Πίστωση"?"📋":"💵"} {e.payMethod}</div>
                 </div>
                 <span style={{fontSize:13, fontWeight:800, color, marginLeft:8}}>{entryType==="Είσπραξη"?"+":"-"}{e.amount.toFixed(2)}€</span>
               </div>
             ); })}
             <div style={{padding:"8px 12px", background:"#1e1e2a", display:"flex", justifyContent:"space-between"}}>
-              <span style={{fontSize:11, color:th.muted, fontWeight:700}}>{entries.length} εγγραφές</span>
-              <span style={{fontSize:12, fontWeight:900, color}}>{entryType==="Είσπραξη"?"+":"-"}{amount.toFixed(2)}€</span>
+              <span style={{fontSize:11, color:th.muted, fontWeight:700}}>{entries.length} εγγραφές {filter&&allEntries.length!==entries.length?"(φιλτ.)":""}</span>
+              <span style={{fontSize:12, fontWeight:900, color}}>{entryType==="Είσπραξη"?"+":"-"}{filteredTotal.toFixed(2)}€</span>
             </div>
           </div>
         )}
